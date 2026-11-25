@@ -1,0 +1,58 @@
+# Downloaded tool binaries
+/tools/n64sym/
+
+# Build output
+/build/
+/out/
+
+# Recompiler output (generated from user-supplied inputs)
+/build/generated/
+
+# User-supplied game inputs (kept out of git)
+/data/*
+!/data/README.txt
+*.z64
+*.n64
+*.v64
+*.rom
+*.elf
+*.map
+*.zip
+*.7z
+
+# Compiled artefacts
+*.exe
+*.dll
+*.lib
+*.obj
+*.o
+*.a
+*.pdb
+*.ilk
+
+# Local runtime/agent artefacts
+imgui.ini
+logs/
+*.log
+
+# Editors / OS metadata
+.idea/
+.vs/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# OpenCode local agent state (permissions, downloaded skills, backups).
+# Machine-local; do not publish these with the port.
+/.opencode/
+opencode.json
+opencode.jsonc
+
+# CodeGraph index (local tooling)
+/.codegraph/
+
+# Python bytecode (tools)
+__pycache__/
+
+
+

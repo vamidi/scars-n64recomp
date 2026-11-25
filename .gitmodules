@@ -1,0 +1,6 @@
+[submodule "thirdparty/n64recomp"]
+	path = thirdparty/n64recomp
+	url = https://github.com/vamidi/n64recomp
+[submodule "thirdparty/N64ModernRuntime"]
+	path = thirdparty/N64ModernRuntime
+	url = https://github.com/N64Recomp/N64ModernRuntime

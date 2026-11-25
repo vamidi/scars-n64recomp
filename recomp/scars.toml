@@ -1,0 +1,27 @@
+# N64Recomp configuration for S.C.A.R.S (Europe).
+#
+# Metadata comes from the generated symbols TOML (tool: tools/ghidra), so no
+# ELF/decompilation is required. Switch to elf_path instead if a disassembly
+# ELF becomes available.
+#
+# Usage:
+#   build/<preset>/bin/N64Recomp recomp/scars.toml
+#   cmake --build build/<preset> --target recompile
+
+[input]
+symbols_file_path = "../build/symbols/scars.symbols.toml"
+rom_file_path = "../data/scars.z64"
+
+# Must match the entry function's vram. N64Recomp renames it to
+# recomp_entrypoint and requires it to live at ROM offset 0x1000.
+entrypoint = 0x80200400
+
+# Output directory for the generated functions (SCARS_GENERATED_DIR).
+output_func_path = "../build/generated"
+
+functions_per_output_file = 50
+
+[patches]
+# stubs = []
+# ignored = []
+# renamed = []
