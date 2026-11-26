@@ -145,6 +145,7 @@ struct Engine {
     uint32_t out = 0;
     uint32_t count = 0;
     uint32_t load_count = 0;   // bytes most recently DMAd by LOADBUFF
+    uint32_t book_entries = 0; // predictors loaded by LOADADPCM
     uint32_t aux_dry = 0;
     uint32_t aux_wet = 0;
 
@@ -278,7 +279,10 @@ void cmd_adpcm(uint32_t loop_address, uint32_t flags, uint32_t samples_wanted,
 
     while (produced < samples_wanted && cursor + 9 <= available_bytes) {
         const uint8_t frame_header = dmem_byte(g_engine.dmem, in_base + cursor);
-        const uint32_t predictor = frame_header & 0xFu;
+        uint32_t predictor = frame_header & 0xFu;
+        if (g_engine.book_entries != 0 && predictor >= g_engine.book_entries) {
+            predictor %= g_engine.book_entries;
+        }
         const uint32_t scale = (frame_header >> 4) & 0xFu;
         const int16_t* coef = &book[predictor * 16];
         const int32_t delta_shift = (scale <= 11) ? static_cast<int32_t>(4 + scale) : 0;
@@ -513,12 +517,16 @@ void process_acmd(uint8_t* rdram, uint32_t list_address, uint32_t list_size, Chu
             break;
 
         case 0x0B: { // LOADADPCM
-            const uint32_t bytes = arg0 * 4; // count is in 32-bit words
-            if (bytes > 0 && kBookDmem + bytes <= kDmemBytes) {
+            // Count is in 16-bit words.  The usual book is 0x80 -> 0x100 bytes,
+            // i.e. 8 predictors of 32 bytes, ending exactly at the 0x5C0 work
+            // area.  Never let a load run into the sample buffers.
+            const uint32_t bytes = arg0 * 2;
+            if (bytes > 0 && kBookDmem + bytes <= kSampleBase) {
                 int16_t* book = &g_engine.dmem[kBookDmem / 2];
                 for (uint32_t j = 0; j < bytes / 2; j++) {
                     book[j] = rdram_s16(rdram, w1 + j * 2);
                 }
+                g_engine.book_entries = bytes / 32;
             }
             break;
         }
@@ -572,6 +580,11 @@ bool audio_hle_ready() {
     // change needed"): the proper place is `config.message_queue_control` in
     // main.cpp, or non-zero defaults in mesgqueue.cpp.
     static const bool configured = [] {
+        // Default on; SCARS_AUDIO_HLE_QUEUE_CTRL=0 disables the workaround.
+        const char* value = std::getenv("SCARS_AUDIO_HLE_QUEUE_CTRL");
+        if (value != nullptr && std::strcmp(value, "0") == 0) {
+            return false;
+        }
         ultramodern::MessageQueueControl control;
         control.requeue_timer = true;
         control.requeue_sp = true;
@@ -581,6 +594,7 @@ bool audio_hle_ready() {
         control.requeue_pi = true;
         control.requeue_dp = true;
         ultramodern::set_message_queue_control(control);
+        logf("audio HLE: message-queue delivery set to requeue-on-full");
         return true;
     }();
     (void) configured;
