@@ -41,6 +41,12 @@ project(ScarsRecomp
 
 message(STATUS "SCARS: version ${SCARS_VERSION}")
 
+# Switch-specific toolchain checks and find modules. Must run before RT64 is
+# configured, because RT64 resolves SDL2 through the module path this sets.
+if(SCARS_SWITCH)
+    include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/SwitchPlatform.cmake")
+endif()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -81,6 +87,10 @@ option(SCARS_LINK_GENERATED
     "Compile and link the locally generated corpus from SCARS_GENERATED_DIR."
     OFF)
 
+option(SCARS_RENDERER_SDL_RT64
+    "Build the SDL2 + RT64 renderer backend (PC window; Switch uses it with NXVK)."
+    ON)
+
 if(SCARS_LINK_GENERATED AND NOT SCARS_BUILD_RUNTIME)
     message(FATAL_ERROR
         "SCARS_LINK_GENERATED=ON requires SCARS_BUILD_RUNTIME=ON: the generated "
@@ -114,7 +124,48 @@ endif()
 
 if(SCARS_BUILD_RUNTIME)
     include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/ScarsRuntime.cmake")
+    if(SCARS_RENDERER_SDL_RT64)
+        include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/ScarsRt64.cmake")
+    endif()
     add_subdirectory(src)
+endif()
+
+# Developer tool: launches scars.exe under a minimal debugger and prints
+# symbolized stacks for faults the in-process crash handler cannot see
+# (fail-fast, stack cookies, CRT invalid parameters).
+if(WIN32)
+    add_executable(minidbg tools/minidbg/minidbg.cpp)
+    target_link_libraries(minidbg PRIVATE dbghelp psapi)
+endif()
+
+# Nintendo Switch package: build the .nro next to the executable.
+if(SCARS_SWITCH AND TARGET scars)
+    set(SCARS_NACP_TEXT "${CMAKE_BINARY_DIR}/scars.nacp.txt")
+    set(SCARS_NACP_FILE "${CMAKE_BINARY_DIR}/scars.nacp")
+    set(SCARS_NRO_FILE "${CMAKE_BINARY_DIR}/scars.nro")
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/cmake/switch/app.nacp.template"
+                   "${SCARS_NACP_TEXT}" @ONLY)
+    add_custom_command(TARGET scars POST_BUILD
+        COMMAND "${NX_NACPTOOL_EXE}" --create
+                "${SCARS_SWITCH_NRO_TITLE}" "${SCARS_SWITCH_NRO_AUTHOR}" "${SCARS_VERSION}"
+                "${SCARS_NACP_FILE}" --titleid=${SCARS_SWITCH_NRO_TITLEID}
+        COMMAND "${NX_ELF2NRO_EXE}" "$<TARGET_FILE:scars>" "${SCARS_NRO_FILE}"
+                --nacp="${SCARS_NACP_FILE}" --icon="${NX_DEFAULT_ICON}"
+        COMMENT "Packaging scars.nro (nacptool + elf2nro)"
+        VERBATIM)
+endif()
+
+# Recompile the RSP microcode from a tracked config (audio ucode today). Needs
+# the ROM, like `recompile` does; the output is gitignored build output.
+if(TARGET RSPRecomp AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/recomp/rsp/aspMain.toml")
+    add_custom_target(generate-rsp
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_BINARY_DIR}/../generated_rsp"
+        COMMAND $<TARGET_FILE:RSPRecomp> "${CMAKE_CURRENT_SOURCE_DIR}/recomp/rsp/aspMain.toml"
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        DEPENDS RSPRecomp
+        COMMENT "RSPRecomp: recomp/rsp/aspMain.toml -> build/generated_rsp/aspMain.cpp"
+        USES_TERMINAL
+        VERBATIM)
 endif()
 
 # Convenience target: run the recompiler over the tracked config.

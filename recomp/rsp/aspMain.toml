@@ -1,0 +1,28 @@
+# S.C.A.R.S audio microcode (libultra aspMain family).
+#
+# Identified from the runtime task: type=M_AUDTASK, ucode=0x80271BB0
+# (size 0x1000), ucode_data=0x802ADA28 (size 0x2C0). The boot image maps ROM
+# 0x1000 to VRAM 0x80200400, so the blob offsets are
+#   0x1000 + (0x80271BB0 - 0x80200400) = 0x727B0   (text)
+#   0x1000 + (0x802ADA28 - 0x80200400) = 0xAE628   (data)
+# The text starts with `addi $24, $zero, 0x360` / `addi $23, $zero, 0xF90`,
+# aspMain's prologue, and the data carries the 16-entry ABI command table.
+text_offset = 0x000727B0
+text_size = 0x00001000
+# The 4 KiB blob is the whole IMEM image and is addressed in the 0x1000-based
+# link space (the entry prologue is its first instruction; libultra's boot
+# microcode jumps to 0x1080 = 0x80 bytes in).
+text_address = 0x1000
+rom_file_path = "../../data/scars.z64"
+output_file_path = "../../build/generated_rsp/aspMain.cpp"
+output_function_name = "scarsAspMain"
+
+# The ABI dispatcher reads its handlers from aspMainData's 16-entry command
+# table, so they are not discoverable from static branch analysis. Values are
+# the u16 entries at ucode_data offset 0x10.
+extra_indirect_branch_targets = [
+    0x1118, 0x1470, 0x11DC, 0x1B38,
+    0x1214, 0x187C, 0x1254, 0x12D0,
+    0x12EC, 0x1328, 0x140C, 0x1294,
+    0x1E24, 0x138C, 0x170C, 0x144C
+]

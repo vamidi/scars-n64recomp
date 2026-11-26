@@ -46,20 +46,11 @@ void warn_once(bool& seen, const char* func, const char* fmt, Args... args) {
     std::fflush(stderr);
 }
 
-bool seen_pfs_select_bank = false;
-bool seen_cont_ram_read = false;
-bool seen_cont_ram_write = false;
-bool seen_check_id = false;
 bool seen_check_pack_id = false;
-bool seen_pfs_rw_inode = false;
-bool seen_pfs_one_channel = false;
-bool seen_pfs_one_channel_data = false;
-bool seen_si_raw_dma = false;
 bool seen_leo_resume = false;
 bool seen_vi_get_current = false;
 bool seen_vi_swap_context = false;
 bool seen_timer_interrupt = false;
-bool seen_pack_request = false;
 bool seen_dp_counters = false;
 
 } // namespace
@@ -95,35 +86,15 @@ extern "C" void __osContGetInitData_recomp(uint8_t* rdram, recomp_context* ctx) 
 // the public osPfs* entry points, so these internals are only reachable if game
 // code drives the pak protocol itself; report the same error it handles.
 // ---------------------------------------------------------------------------
-extern "C" void osPfsIsPlug_recomp(uint8_t* rdram, recomp_context* ctx) {
-    u8* pattern = _arg<1, u8*>(rdram, ctx);
-    *pattern = 0;
-    ctx->r2 = 0;
-}
 
-extern "C" void __osPfsSelectBank_recomp(uint8_t* rdram, recomp_context* ctx) {
-    (void) rdram;
-    warn_once(seen_pfs_select_bank, "__osPfsSelectBank", "no Controller Pak support");
-    ctx->r2 = PFS_ERR_NOPACK;
-}
 
-extern "C" void __osContRamRead_recomp(uint8_t* rdram, recomp_context* ctx) {
-    (void) rdram;
-    warn_once(seen_cont_ram_read, "__osContRamRead", "no Controller Pak support");
-    ctx->r2 = PFS_ERR_NOPACK;
-}
 
-extern "C" void __osContRamWrite_recomp(uint8_t* rdram, recomp_context* ctx) {
-    (void) rdram;
-    warn_once(seen_cont_ram_write, "__osContRamWrite", "no Controller Pak support");
-    ctx->r2 = PFS_ERR_NOPACK;
-}
 
-extern "C" void __osCheckId_recomp(uint8_t* rdram, recomp_context* ctx) {
-    (void) rdram;
-    warn_once(seen_check_id, "__osCheckId", "no Controller Pak support");
-    ctx->r2 = PFS_ERR_NOPACK;
-}
+
+
+
+
+
 
 extern "C" void __osCheckPackId_recomp(uint8_t* rdram, recomp_context* ctx) {
     (void) rdram;
@@ -131,22 +102,32 @@ extern "C" void __osCheckPackId_recomp(uint8_t* rdram, recomp_context* ctx) {
     ctx->r2 = PFS_ERR_NOPACK;
 }
 
-extern "C" void __osPfsRWInode_recomp(uint8_t* rdram, recomp_context* ctx) {
-    (void) rdram;
-    warn_once(seen_pfs_rw_inode, "__osPfsRWInode", "no Controller Pak support");
-    ctx->r2 = PFS_ERR_NOPACK;
-}
 
+
+// The single-channel probe the game's own contpfs code runs after osPfsIsPlug:
+// ask one controller port for its device status. We answer from the pak model in
+// guest_pak.cpp instead of driving the SI channel, so the request itself is a
+// no-op and the answer is produced by __osPfsGetOneChannelData below.
 extern "C" void __osPfsRequestOneChannel_recomp(uint8_t* rdram, recomp_context* ctx) {
     (void) rdram;
-    warn_once(seen_pfs_one_channel, "__osPfsRequestOneChannel", "no Controller Pak support");
-    ctx->r2 = PFS_ERR_NOPACK;
+    (void) ctx;
 }
 
+// Status answer, 3 bytes, as the Joybus protocol defines it (n64brew; also in
+// Kyujo's src/ultra/hw_pif.c): device type 0x05 0x00, then 0x01 = pak inserted,
+// 0x02 = no pak. Only the port that osPfsIsPlug reported has one.
 extern "C" void __osPfsGetOneChannelData_recomp(uint8_t* rdram, recomp_context* ctx) {
-    (void) rdram;
-    warn_once(seen_pfs_one_channel_data, "__osPfsGetOneChannelData", "no Controller Pak support");
-    ctx->r2 = PFS_ERR_NOPACK;
+    const uint8_t channel = _arg<0, u8>(rdram, ctx);
+    u8* data = _arg<1, u8*>(rdram, ctx);
+    if (data == nullptr) {
+        ctx->r2 = -1;
+        return;
+    }
+    const bool has_pak = (channel == 0);
+    data[0] = 0x05;            // standard controller
+    data[1] = 0x00;
+    data[2] = has_pak ? 0x01 : 0x02;
+    ctx->r2 = 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -156,11 +137,7 @@ extern "C" void __osPfsGetOneChannelData_recomp(uint8_t* rdram, recomp_context* 
 // its own completion message. Nothing calls it on the boot path today, so fail
 // loudly instead of faking a completion that will never arrive.
 // ---------------------------------------------------------------------------
-extern "C" void __osSiRawStartDma_recomp(uint8_t* rdram, recomp_context* ctx) {
-    (void) rdram;
-    warn_once(seen_si_raw_dma, "__osSiRawStartDma", "raw SI DMA is not emulated");
-    ctx->r2 = 0;
-}
+
 
 extern "C" void __osSiCreateAccessQueue_recomp(uint8_t* rdram, recomp_context* ctx) {
     // The SI access queue only serialises SI transfers. The runtime performs all
@@ -180,12 +157,7 @@ extern "C" void __osSiRelAccess_recomp(uint8_t* rdram, recomp_context* ctx) {
     (void) ctx;
 }
 
-extern "C" void __osPackRequestData_recomp(uint8_t* rdram, recomp_context* ctx) {
-    // Builds the 56-byte SI request block that __osSiRawStartDma would send.
-    // Harmless on its own; logged to prove the pak path is not silently active.
-    (void) rdram;
-    warn_once(seen_pack_request, "__osPackRequestData", "pak request block built but never sent");
-}
+
 
 // ---------------------------------------------------------------------------
 // 64DD LEO. This cartridge has no disk drive; the leo module is linked but its

@@ -77,6 +77,19 @@
       "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" }
     },
     {
+      "name": "switch",
+      "displayName": "Nintendo Switch (devkitA64 + libnx + NXVK)",
+      "inherits": "base",
+      "description": "Cross build; requires DEVKITPRO and the nxvk portlib (docs/SWITCH.md).",
+      "toolchainFile": "${sourceDir}/cmake/switch/SwitchToolchain.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "SCARS_LINK_GENERATED": "ON",
+        "SCARS_RENDERER_SDL_RT64": "ON",
+        "SCARS_SWITCH": "ON"
+      }
+    },
+    {
       "name": "macos-arm64",
       "hidden": true,
       "inherits": "base",
@@ -103,6 +116,7 @@
     { "name": "linux-x86_64-release", "configurePreset": "linux-x86_64-release" },
     { "name": "linux-arm64-debug", "configurePreset": "linux-arm64-debug" },
     { "name": "linux-arm64-release", "configurePreset": "linux-arm64-release" },
+    { "name": "switch", "configurePreset": "switch" },
     { "name": "macos-arm64-debug", "configurePreset": "macos-arm64-debug" },
     { "name": "macos-arm64-release", "configurePreset": "macos-arm64-release" }
   ]

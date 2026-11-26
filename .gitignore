@@ -1,6 +1,11 @@
 # Downloaded tool binaries
 /tools/n64sym/
 
+# RT64 checkout (renderer dependency, ~380 MB, see tools/fetch_rt64.ps1 and
+# docs/SWITCH.md). Point SCARS_RT64_DIR at a checkout outside the tree instead
+# if you prefer not to keep a copy here.
+/thirdparty/rt64/
+
 # Build output
 /build/
 /out/
@@ -20,6 +25,13 @@
 *.zip
 *.7z
 
+# Runtime user directory (config, stored ROM, saves) when running from the
+# repo root; the default is <exe>/user.
+/user/
+
+# Runtime log mirror written next to the executable.
+scars-log.txt
+
 # Compiled artefacts
 *.exe
 *.dll
@@ -29,6 +41,11 @@
 *.a
 *.pdb
 *.ilk
+
+# Nintendo Switch packages (build/switch holds the normal output; these cover a
+# copy left in the tree).
+*.nro
+*.nacp
 
 # Local runtime/agent artefacts
 imgui.ini
@@ -53,6 +70,3 @@ opencode.jsonc
 
 # Python bytecode (tools)
 __pycache__/
-
-
-

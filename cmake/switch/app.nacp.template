@@ -1,0 +1,6 @@
+﻿# NACP display fields for the S.C.A.R.S Switch build.
+# configure_file(@ONLY) fills the @vars@; nacptool turns the result into a binary .nacp.
+# Title id comes from SCARS_SWITCH_NRO_TITLEID (homebrew range, set in the toolchain file).
+name=@SCARS_SWITCH_NRO_TITLE@
+publisher=@SCARS_SWITCH_NRO_AUTHOR@
+display_version=@SCARS_VERSION@

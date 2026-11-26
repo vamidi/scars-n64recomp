@@ -15,6 +15,30 @@ n64sym_path = sys.argv[2] if len(sys.argv) > 2 else r'D:\Personal\C++\scars-n64r
 manual_names = {
     0x802750C0: 'osUnmapTLBAll',
     0x80275110: 'osWritebackDCacheAll',
+    # n64sym leaves the libultra functions that touch hardware registers
+    # unnamed, so N64Recomp translates them and the generated code reads MMIO
+    # addresses as if they were RDRAM (a wild pointer, since 0xA4500014 and
+    # friends are outside the 4 GiB guest space). Each of these was identified
+    # from its register accesses and call shape, and every one of them is a name
+    # N64Recomp already replaces with a runtime implementation:
+    #   osAiSetFrequency  - writes AI_DACRATE(AI_BITRATE)/AI_CONTROL
+    #   osAiSetNextBuffer - osVirtualToPhysical + writes AI_DRAM_ADDR/AI_LEN
+    #   __osAiDeviceBusy  - reads AI_STATUS, returns status < 0
+    #   osDpSetStatus     - writes DP_STATUS
+    #   osCreatePiManager - builds the PI message queue and PI thread
+    #   osCartRomInit     - reads PI_BSD_DOM1/2_LAT|PWD|PGS|RLS into OSPiHandle
+    0x8027FE40: 'osAiSetFrequency',
+    0x8027FF70: 'osAiSetNextBuffer',
+    0x80280010: '__osAiDeviceBusy',
+    0x80280030: 'osDpSetStatus',
+    0x80284A10: 'osCreatePiManager',
+    0x80284BB0: 'osCartRomInit',
+    # n64sym names every other function in libultra's continit.c but skips
+    # osContInit itself. Leaving it unnamed translates the raw SI controller
+    # protocol (pack request -> SI DMA -> wait for the completion message), which
+    # the runtime cannot answer. 0x80281450 calls __osSiCreateAccessQueue,
+    # __osContGetInitData and __osSiRawStartDma, which is osContInit's shape.
+    0x80281450: 'osContInit',
 }
 
 names = {}
