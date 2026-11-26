@@ -22,9 +22,11 @@
 //     does; the game then calls osAiSetNextBuffer with it;
 //   - return RspExitReason::Broke when the task completed.
 //
-// Until it is implemented, `scars_audio_hle` reports Unsupported so the runtime
-// keeps using the tracing stub and the game stays silent but alive. Enable with
-// SCARS_AUDIO_HLE=1 (see trace_backend.cpp).
+// The engine is implemented in audio_hle.cpp: it decodes the ACMD list (ADPCM,
+// RESAMPLE, ENVMIXER, MIXER, INTERLEAVE, SAVEBUFF, ...) against a 4 KiB DMEM
+// model and writes the frame to RDRAM where the stream asks for it.  The
+// OSTask's output_buff is unused by this game; the last SAVEBUFF of each chunk
+// targets the AI buffer.  Enable with SCARS_AUDIO_HLE=1 (see trace_backend.cpp).
 
 #ifndef SCARS_AUDIO_HLE_H
 #define SCARS_AUDIO_HLE_H

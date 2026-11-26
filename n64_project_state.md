@@ -1024,3 +1024,71 @@ zero dispatches handler 0, which is the DMA helper, and loops.
 State: `scarsAspMain` is compiled, wired and gated behind `SCARS_RECOMP_AUDIO=1`
 (default off, game unchanged). The DMEM address fixes, the private task buffer and
 the RSPRecomp branch-space fix all stay - they are correct independent of this.
+
+## Session 5 - the audio stall is a completion-message deadlock
+
+### Reproduction
+Run `scars.exe` with `SCARS_AUTO_CONFIRM=1` and no other env vars. The game boots
+to the menus and then freezes at a random point inside the first second
+(`rsp` sticks at 7-8 audio tasks, `ai_len=0`, display lists stop). Any
+perturbation (stderr tracing, a 1-line ring buffer per event) hides it, so it is
+a race, but a deterministic one once it lands.
+
+### Evidence (in-memory ring + stall dump, see below)
+Stall dump at the moment the RSP counter stopped for 120 VIs:
+
+```
+running queue:                       (empty - nothing scheduled)
+SP queue      803C93C8 valid=0/1 recv_waiters=2
+SI queue      803E3300 valid=1/1 recv_waiters=0
+AI queue      8038D9C0 valid=1/1 recv_waiters=0
+VI queue      803FF970 valid=2/2 recv_waiters=0
+DP queue      803BF7F8 valid=1/1 recv_waiters=0
+PRENMI        803DDBD8 valid=0/1 recv_waiters=1
+```
+
+So every completion queue is **full of messages nobody consumed**, while both
+game threads wait on the SP queue, which is empty. The game cannot submit the
+next task (both its threads are waiting for an SP completion), so no further
+completion is produced: `rsp` sticks at 8 forever.
+
+The same run records ~37 million failed delivery attempts (the idler retrying
+undeliverable messages), i.e. 100% of a core is burned while the guest is dead.
+
+### Root cause
+Completion messages are the only thing that can wake a thread blocked in
+`do_recv`. `do_send` refuses to insert into a full queue, and the runtime either
+drops the message (`requeue_if_blocked == false`, the default for AI/VI/PI) or
+re-queues it and retries later (default for SP/DP/timer). With queue capacity 1
+and several completion sources, a completion can therefore be lost or deferred
+while the thread that needs it is already blocked; the guest then waits for a
+completion that will never be produced again.
+
+Two aggravating factors:
+- `pause_self` retries undeliverable messages in a tight loop with no yield, so
+  a stuck guest also pegs a CPU (37M attempts in ~6 s).
+- `schedule_running_thread` marks a thread QUEUED but never signals it; only
+  `run_next_thread`/`resume_thread` signal. That makes the wake-up path depend
+  on a third thread reaching a dispatch point.
+
+### Fix direction (not implemented yet)
+A completion is a count, not a payload: when the target queue is full, a
+completion must *replace* an outstanding entry rather than be refused, so a
+waiter is always woken and a queue can never wedge with unconsumed completions.
+That is a semantic change to `do_send` in
+`ultramodern/src/mesgqueue.cpp` (shared runtime), so it needs a decision before
+implementation.
+
+### Diagnostics now in the tree (all behind `SCARS_SCHED_TRACE` except the dump)
+- `sched_record()` keeps the last 512 scheduling events in memory and prints
+  them only on a stall; `SCARS_SCHED_TRACE=1` also streams them live.
+- Stall detector in `trace_backend.cpp::on_vi` dumps the ring, the running
+  queue, and every registered event queue (valid/msgCount/waiters) once, when
+  the RSP task counter stops advancing.
+- `scars_dump_running_queue()`, `scars_dump_event_queues()`,
+  `scars_note_event_queue()` live in `ultramodern/src/scheduling.cpp`.
+
+### Also fixed this session (real, committed)
+- `thread_queue_pop` dereferenced null on an empty queue (crash).
+- `pause_self`/`yield_self` only swapped to higher-priority threads; the idle
+  loop now runs anything runnable.

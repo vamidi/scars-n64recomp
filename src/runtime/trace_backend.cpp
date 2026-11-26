@@ -21,6 +21,10 @@
 RspExitReason scarsAspMain(uint8_t* rdram, uint32_t ucode_addr);
 #endif
 
+// Defined in ultramodern/src/scheduling.cpp: prints the in-memory ring of the
+// most recent scheduling events (thread parks, wake-ups, message deliveries).
+void scars_sched_dump_recent(const char* why);
+
 namespace scars {
 namespace {
 
@@ -285,6 +289,18 @@ void on_vi() {
     // A rolling summary: whether the guest keeps producing graphics/audio work
     // is the first thing to look at when a frame looks frozen.
     if (index % 120 == 0) {
+        // Stall detector: the guest stops submitting RSP tasks entirely when the
+        // scheduler loses a wake-up. Dump the last scheduling events once, from
+        // the VI thread, so the fast (untraced) run that reproduces it is enough.
+        static unsigned long long last_rsp_here = 0;
+        static bool stall_dumped = false;
+        const unsigned long long rsp_now = rsp_tasks.load();
+        if (!stall_dumped && rsp_now == last_rsp_here) {
+            stall_dumped = true;
+            scars_sched_dump_recent("rsp task counter stopped advancing");
+        }
+        last_rsp_here = rsp_now;
+
         const auto* vi = ultramodern::renderer::get_vi_regs();
         logf("status: vis=%llu gfx=%llu rsp=%llu audio=%llu ai_len=%u vi_origin=0x%08X vi_width=0x%X "
              "vi_status=0x%08X",
