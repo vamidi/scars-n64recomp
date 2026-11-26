@@ -36,6 +36,9 @@
 namespace scars {
 namespace {
 
+// PFS/libultra error codes (ultra64.h only defines a few of them).
+constexpr s32 PFS_ERR_NOPACK = 1;
+
 // A Controller Pak is 32 KiB of 256-byte pages addressed in 32-byte blocks.
 constexpr size_t kPakSize = 0x8000;
 constexpr uint32_t kBlockSize = 32;
@@ -142,6 +145,10 @@ void guest_pak_flush() {
 // The hardware transaction is synchronous here; the caller only inspects the
 // return value, so no SI completion message is posted.
 extern "C" void __osContRamRead_recomp(uint8_t* rdram, recomp_context* ctx) {
+    if (!pak_enabled()) {
+        ctx->r2 = PFS_ERR_NOPACK;
+        return;
+    }
     (void) rdram;
     const uint32_t address = static_cast<uint32_t>(ctx->r6) & 0xFFFF;
     u8* buffer = _arg<3, u8*>(rdram, ctx);
@@ -156,6 +163,10 @@ extern "C" void __osContRamRead_recomp(uint8_t* rdram, recomp_context* ctx) {
 // s32 __osContRamWrite(OSMesgQueue *mq, int channel, u16 address, u8 *buffer,
 //                      int force)
 extern "C" void __osContRamWrite_recomp(uint8_t* rdram, recomp_context* ctx) {
+    if (!pak_enabled()) {
+        ctx->r2 = PFS_ERR_NOPACK;
+        return;
+    }
     (void) rdram;
     const uint32_t address = static_cast<uint32_t>(ctx->r6) & 0xFFFF;
     const u8* buffer = _arg<3, u8*>(rdram, ctx);
@@ -172,6 +183,10 @@ extern "C" void __osContRamWrite_recomp(uint8_t* rdram, recomp_context* ctx) {
 // The pak has a single bank; the call exists to switch between the two 16 KiB
 // halves of a 32 KiB device and the game's own code drives it.
 extern "C" void __osPfsSelectBank_recomp(uint8_t* rdram, recomp_context* ctx) {
+    if (!pak_enabled()) {
+        ctx->r2 = PFS_ERR_NOPACK;
+        return;
+    }
     (void) rdram;
     ensure_loaded();
     ctx->r2 = 0;
@@ -180,6 +195,10 @@ extern "C" void __osPfsSelectBank_recomp(uint8_t* rdram, recomp_context* ctx) {
 // s32 __osCheckId(OSPfs *pfs): the game's contpfs code validates the header it
 // reads through __osContRamRead; nothing extra to check here.
 extern "C" void __osCheckId_recomp(uint8_t* rdram, recomp_context* ctx) {
+    if (!pak_enabled()) {
+        ctx->r2 = PFS_ERR_NOPACK;
+        return;
+    }
     (void) rdram;
     ensure_loaded();
     ctx->r2 = 0;
@@ -189,6 +208,10 @@ extern "C" void __osCheckId_recomp(uint8_t* rdram, recomp_context* ctx) {
 // One 256-byte inode page. Writing mirrors it into the mirror inode table, which
 // is what libultra does so a half-written update can be recovered.
 extern "C" void __osPfsRWInode_recomp(uint8_t* rdram, recomp_context* ctx) {
+    if (!pak_enabled()) {
+        ctx->r2 = PFS_ERR_NOPACK;
+        return;
+    }
     OSPfs* pfs = _arg<0, OSPfs*>(rdram, ctx);
     u8* inode = _arg<1, u8*>(rdram, ctx);
     const uint8_t flag = _arg<2, u8>(rdram, ctx);
@@ -217,6 +240,10 @@ extern "C" void __osPfsRWInode_recomp(uint8_t* rdram, recomp_context* ctx) {
 // Builds the 56-byte SI request block that __osContRamRead/Write would send.
 // Unused here: the storage layer answers directly, so nothing consumes it.
 extern "C" void __osPackRequestData_recomp(uint8_t* rdram, recomp_context* ctx) {
+    if (!pak_enabled()) {
+        ctx->r2 = PFS_ERR_NOPACK;
+        return;
+    }
     u8* data = _arg<0, u8*>(rdram, ctx);
     if (data != nullptr) {
         std::memset(data, 0, 56);
@@ -250,6 +277,11 @@ extern "C" void __osSiRawStartDma_recomp(uint8_t* rdram, recomp_context* ctx) {
     (void) ctx;
     ultramodern::send_si_message();
     ctx->r2 = 0;
+}
+
+bool guest_pak_enabled() {
+    ensure_loaded();
+    return pak_enabled();
 }
 
 } // namespace scars
