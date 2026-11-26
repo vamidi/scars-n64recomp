@@ -21,8 +21,22 @@ output_function_name = "scarsAspMain"
 # table, so they are not discoverable from static branch analysis. Values are
 # the u16 entries at ucode_data offset 0x10.
 extra_indirect_branch_targets = [
+    # ACMD handlers from the command table in aspMainData.
     0x1118, 0x1470, 0x11DC, 0x1B38,
     0x1214, 0x187C, 0x1254, 0x12D0,
     0x12EC, 0x1328, 0x140C, 0x1294,
-    0x1E24, 0x138C, 0x170C, 0x144C
+    0x1E24, 0x138C, 0x170C, 0x144C,
+    # Return addresses reached through `jr ra` (DMA helpers) and `jr a1` (chunk
+    # refill). They are plain labels for direct branches, but they also have to
+    # exist as cases in the indirect-jump switch.
+    0x1098, 0x1064
 ]
+
+# The ucode is written for the RSP boot microcode: ACMD handlers tail-jump into
+# the DMA helpers (0x1118/0x1150), which return through `ra` to the post-dispatch
+# block at 0x1098, and the chunk refill at 0x10D4 returns through `a1` to the
+# dispatcher at 0x1064. The boot leaves those registers set; a body-only
+# recompilation must restore them before each dispatch (0x108C is the `jr`).
+abi_handshake_dispatch = 0x108C
+abi_handshake_ra = 0x1098
+abi_handshake_a1 = 0x1064

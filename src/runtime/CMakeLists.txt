@@ -1,5 +1,6 @@
 add_executable(scars
     main.cpp
+    audio_hle.cpp
     crash_handler.cpp
     guest_hw.cpp
     guest_pak.cpp

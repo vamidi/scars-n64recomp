@@ -1,4 +1,5 @@
 #include "trace_backend.h"
+#include "audio_hle.h"
 #include "guest_hw.h"
 #include "scars_log.h"
 
@@ -123,6 +124,16 @@ RspUcodeFunc* get_trace_rsp_microcode(const OSTask* task) {
                   index, task->t.type, static_cast<uint32_t>(task->t.ucode), task->t.ucode_size,
                   static_cast<uint32_t>(task->t.ucode_data), task->t.ucode_data_size,
                   static_cast<uint32_t>(task->t.data_ptr), task->t.data_size);
+
+    // Native audio engine (option 3): a drop-in RspUcodeFunc that decodes the
+    // ACMD list instead of executing microcode.
+    static const bool use_audio_hle = [] {
+        const char* value = std::getenv("SCARS_AUDIO_HLE");
+        return value != nullptr && std::strcmp(value, "0") != 0;
+    }();
+    if (use_audio_hle && task->t.type == M_AUDTASK && audio_hle_ready()) {
+        return &audio_hle_run;
+    }
 
 #ifdef SCARS_HAVE_RECOMP_ASPMAIN
     // The audio microcode is recompiled, but its ABI input path is not right yet:
