@@ -1092,3 +1092,35 @@ implementation.
 - `thread_queue_pop` dereferenced null on an empty queue (crash).
 - `pause_self`/`yield_self` only swapped to higher-priority threads; the idle
   loop now runs anything runnable.
+
+### Update: the lost-wakeup window is closed, the deadlock is not
+
+`do_recv` used to check the queue, then register as a waiter, then park. A
+delivery landing between the check and the registration inserted the message
+with nobody to wake. `do_recv`/`do_send` in `ultramodern/src/mesgqueue.cpp` now
+share a recursive mutex for "check + register" and "insert + wake", so one side
+always observes the other. That is a genuine fix and it stays.
+
+The stall still reproduces (~2 in 10 runs). The dump is unchanged in shape:
+
+```
+running queue:                       (empty)
+SP    803C93C8 valid=0/1 recv_waiters=2
+SI    803E3300 valid=1/1 recv_waiters=0
+AI    8038D9C0 valid=1/1 recv_waiters=0
+VI    803FF970 valid=2/2 recv_waiters=0
+DP    803BF7F8 valid=1/1 recv_waiters=0
+```
+
+Both game threads wait on the SP queue, which is empty, while VI/DP/AI/SI each
+hold an unconsumed completion. No task is in flight, so no further SP completion
+can be produced: the guest is dead.
+
+The open question is now narrow and specific: why do two threads wait on the SP
+completion queue at the same time when four other completion queues still hold
+messages they would normally drain first? Either the runtime delivers a
+completion to the wrong queue, or one of the two threads is waiting for a
+completion belonging to the other. Next step is per-thread tracing of which
+queue each thread parks on and which messages it consumes over the whole run
+(the ring already records park-recv/recv with thread ids - dump it *before* the
+stall, not only at the end).
